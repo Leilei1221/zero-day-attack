@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zero Day Attack Simulation</title>
+    
+    <!-- 引入 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 引入 React 和 ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- 引入 Babel 來解析 JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <style>
+        /* 自定義動畫 */
+        @keyframes shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(-5px); } 75% { transform: translateX(5px); } }
+        .animate-shake { animation: shake 0.3s ease-in-out; }
+        .animate-fade-in { animation: fadeIn 0.8s ease-out; }
+        .animate-bounce-slow { animation: bounce 2s infinite; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .glitch-effect { text-shadow: 2px 0 #ff0000, -2px 0 #00ffff; }
+        .text-shadow { text-shadow: 0 0 10px rgba(255,255,255,0.5); }
+        
+        /* 確保 iframe 內的滾動條樣式美觀 */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #4a4a4a; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #666; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-100 m-0 p-0 font-mono">
+
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- 內建圖示組件 (取代外部 Lucide 依賴) ---
+        const Icon = ({ children, className, size = 24, ...props }) => (
+            <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width={size} 
+                height={size} 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className={className} 
+                {...props}
+            >
+                {children}
+            </svg>
+        );
+
+        const Play = (props) => <Icon {...props}><polygon points="5 3 19 12 5 21 5 3"/></Icon>;
+        const Clock = (props) => <Icon {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></Icon>;
+        const MapPin = (props) => <Icon {...props}><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></Icon>;
+        const AlertTriangle = (props) => <Icon {...props}><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></Icon>;
+        const Shield = (props) => <Icon {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/></Icon>;
+        const FileText = (props) => <Icon {...props}><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></Icon>;
+        const Award = (props) => <Icon {...props}><circle cx="12" cy="8" r="7"/><polyline points="8.21 13.89 7 23 12 20 17 23 15.79 13.88"/></Icon>;
+        const Volume2 = (props) => <Icon {...props}><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></Icon>;
+        const ArrowUp = (props) => <Icon {...props}><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></Icon>;
+        const ArrowDown = (props) => <Icon {...props}><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></Icon>;
+        const ArrowLeft = (props) => <Icon {...props}><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></Icon>;
+        const Activity = (props) => <Icon {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></Icon>;
+        const Siren = (props) => <Icon {...props}><path d="M7 18v-6a5 5 0 1 1 10 0v6"/><path d="M5 21a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-2H5v2Z"/><path d="M21 12h1"/><path d="M18.5 4.5 18 5"/><path d="M2 12h1"/><path d="M12 2v1"/><path d="M4.929 4.929l.707.707"/></Icon>;
+        const Radio = (props) => <Icon {...props}><circle cx="12" cy="12" r="2"/><path d="M16.24 7.76a6 6 0 0 1 0 8.49"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></Icon>;
+        const HeartPulse = (props) => <Icon {...props}><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/><polyline points="3.22 12 7 17 10 9 12 13 20.84 6"/></Icon>;
+        const Stethoscope = (props) => <Icon {...props}><path d="M4.8 2.3A.3.3 0 1 0 5 2H4a2 2 0 0 0-2 2v5a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6V4a2 2 0 0 0-2-2h-1a.2.2 0 1 0 .3.3"/><path d="M8 15v1a6 6 0 0 0 6 6v0a6 6 0 0 0 6-6v-4"/><circle cx="20" cy="10" r="2"/></Icon>;
+        const CornerUpRight = (props) => <Icon {...props}><polyline points="9 14 15 8 21 14"/><path d="M4 20v-7a4 4 0 0 1 4-4h13"/></Icon>;
+
+        // --- Configuration & Content ---
+        const CONFIG = {
+            audioSrc: "https://www.ylhpb.gov.tw/df_ufiles/e/ug.mp3", // 空襲警報
+            alarmClearSrc: "https://www.ycjh.tp.edu.tw/uploadfiles/annex/20240328170946_2.mp3", // 解除警報
+            shelterMapLink: "https://www.hualien.gov.tw/content_edit.php?menu=2503&typeid=2953",
+            
+            // 各關卡專屬 Padlet 連結
+            padletShelterPhoto: "https://padlet.com/phyllis41/padlet-bl0b1p0sbf888tpq/wish/LNV1Q7097P3BZmq3",
+            padletPatient1: "https://padlet.com/phyllis41/padlet-bl0b1p0sbf888tpq/wish/e9YpQN9vz8ADaxjM",
+            padletPatient2: "https://padlet.com/phyllis41/padlet-bl0b1p0sbf888tpq/wish/e9YpQN9vzBy1axjM",
+            padletPatient3: "https://padlet.com/phyllis41/padlet-bl0b1p0sbf888tpq/wish/e9YpQN9vzBy1axjM",
+            padletCPR: "https://padlet.com/phyllis41/padlet-bl0b1p0sbf888tpq/wish/J24jalr50lyEZ0A1",
+            
+            // 圖片資源
+            imgSchoolMap: "https://drive.google.com/thumbnail?id=1AMTUxNHA3l09jx6p81--QnPs8bOYElSj&sz=w1000",
+            imgMoveMap: "https://drive.google.com/thumbnail?id=1B-cpjIAnvv5DBdykRcTX9KVptNiHPtvV&sz=w1000", 
+            imgSupplies: "https://drive.google.com/thumbnail?id=1i_fysXmumVAubmf1tQz3vkADMHaU16Pl&sz=w1000",
+
+            // 背景圖資源
+            bgIntro: "https://images.unsplash.com/photo-1552965944-16c2797698df?q=80&w=1920&auto=format&fit=crop",
+            bgSchool: "https://images.unsplash.com/photo-1592424638584-e5c00679926b?q=80&w=1920&auto=format&fit=crop",
+            bgShelter: "https://images.unsplash.com/photo-1504863722485-b834c3339d40?q=80&w=1920&auto=format&fit=crop",
+            bgStairs: "https://images.unsplash.com/photo-1505015920881-0f83c2f7c95e?q=80&w=1920&auto=format&fit=crop",
+            bgMedical: "https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?q=80&w=1920&auto=format&fit=crop",
+            bgCPR: "https://images.unsplash.com/photo-1579684385127-1ef15d508118?q=80&w=1920&auto=format&fit=crop",
+        };
+
+        // --- Helper Components ---
+
+        // Tactical Background Wrapper
+        const TacticalWrapper = ({ bgImage, isAlert, children }) => (
+            <div className="min-h-screen w-full bg-gray-900 text-gray-100 relative overflow-x-hidden font-mono">
+                <div className="fixed inset-0 z-0">
+                    <div className="absolute inset-0 bg-black/80 z-10"></div>
+                    {isAlert && <div className="absolute inset-0 bg-red-900/20 z-20 animate-pulse"></div>}
+                    <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-30 z-20 pointer-events-none"></div>
+                    <img src={bgImage} alt="Background" className="w-full h-full object-cover object-center opacity-60" />
+                </div>
+                <div className="fixed inset-0 pointer-events-none z-30 opacity-10 bg-[linear-gradient(rgba(18,16,16,0)_50%,rgba(0,0,0,0.25)_50%),linear-gradient(90deg,rgba(255,0,0,0.06),rgba(0,255,0,0.02),rgba(0,0,255,0.06))]" style={{backgroundSize: "100% 2px, 3px 100%"}}></div>
+                <div className="relative z-40 max-w-3xl mx-auto pb-12 flex flex-col min-h-screen">
+                    {children}
+                </div>
+            </div>
+        );
+
+        // Styled Tactical Button
+        const ActionButton = ({ onClick, children, variant = 'primary', className = '' }) => {
+            const variants = {
+                primary: "bg-red-600/90 hover:bg-red-600 text-white border border-red-400 shadow-[0_0_15px_rgba(220,38,38,0.5)]",
+                secondary: "bg-gray-800/80 hover:bg-gray-700 text-blue-200 border border-blue-500/30",
+                success: "bg-emerald-600/90 hover:bg-emerald-500 text-white border border-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.5)]",
+                outline: "bg-transparent border-2 border-yellow-500/50 text-yellow-400 hover:bg-yellow-900/30"
+            };
+            
+            return (
+                <button onClick={onClick} className={`w-full py-4 px-6 rounded-sm font-bold text-lg transition-all transform active:scale-95 flex items-center justify-center gap-3 backdrop-blur-sm ${variants[variant]} ${className}`}>
+                    <div className="w-1 h-full absolute left-0 top-0 bg-white/20"></div>
+                    {children}
+                </button>
+            );
+        };
+
+        // Styled Input
+        const GameInput = ({ onSubmit, placeholder, correctCode, hint, altCodes = [] }) => {
+            const [value, setValue] = useState('');
+            const [error, setError] = useState(false);
+
+            const handleSubmit = (e) => {
+                e.preventDefault();
+                const cleanVal = value.trim();
+                if (cleanVal === correctCode || (altCodes && altCodes.includes(cleanVal))) {
+                    onSubmit();
+                } else {
+                    setError(true);
+                    setTimeout(() => setError(false), 2000);
+                }
+            };
+
+            return (
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div className="relative group">
+                        <div className={`absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-lg blur opacity-30 group-hover:opacity-75 transition duration-200 ${error ? 'from-red-500 to-orange-500 opacity-75' : ''}`}></div>
+                        <input
+                            type="text"
+                            value={value}
+                            onChange={(e) => setValue(e.target.value)}
+                            placeholder={placeholder}
+                            className={`relative w-full p-4 bg-black/80 border-2 rounded text-xl text-center outline-none text-white font-mono tracking-widest placeholder-gray-600 transition-colors ${
+                                error ? 'border-red-500 animate-shake' : 'border-blue-500/50 focus:border-blue-400'
+                            }`}
+                        />
+                    </div>
+                    {error && <p className="text-red-400 text-center font-bold bg-black/50 p-2 rounded border border-red-900/50">{hint || "// ACCESS DENIED // 密碼錯誤"}</p>}
+                    <ActionButton variant="primary">
+                        <span className="tracking-widest">CONFIRM</span>
+                    </ActionButton>
+                </form>
+            );
+        };
+
+        // Card Container
+        const MissionCard = ({ title, icon: Icon, children, className = '' }) => (
+            <div className={`bg-black/60 backdrop-blur-md border-l-4 border-t border-r border-b border-gray-700 p-6 rounded-lg shadow-2xl ${className}`}>
+                {title && (
+                    <div className="flex items-center gap-3 mb-6 border-b border-gray-700 pb-4">
+                        {Icon && <Icon className="w-6 h-6 text-yellow-500" />}
+                        <h2 className="text-xl md:text-2xl font-bold text-gray-100 tracking-wide uppercase">{title}</h2>
+                    </div>
+                )}
+                {children}
+            </div>
+        );
+
+        // Triage Game Component
+        const TriageGame = ({ onNext }) => {
+            const initialPatients = [
+                { id: 1, text: "開放性頭部創傷，伴有大量出血；左腿骨折，意識模糊，疑似休克", priority: 1, color: 'red' },
+                { id: 4, text: "右肩頰嚴重撕裂傷，伴有大出血，目前仍可自行移動", priority: 3, color: 'green' },
+                { id: 2, text: "胸部鈍器傷（建築坍塌碎片砸傷） 疑似多根肋骨骨折，呼吸困難，懷疑氣胸", priority: 1, color: 'red' },
+                { id: 5, text: "前胸多處擦傷與瘀傷，疑似腰部扭傷，無法自行站立", priority: 2, color: 'yellow' },
+                { id: 3, text: "右腿輕度燒傷，前臂被鋒利碎片劃出較深的傷口，持續出血，無法自行移動", priority: 2, color: 'yellow' }
+            ];
+
+            const [patients, setPatients] = useState(initialPatients);
+
+            const moveItem = (index, direction) => {
+                const newPatients = [...patients];
+                if (direction === 'up' && index > 0) {
+                    [newPatients[index], newPatients[index - 1]] = [newPatients[index - 1], newPatients[index]];
+                } else if (direction === 'down' && index < newPatients.length - 1) {
+                    [newPatients[index], newPatients[index + 1]] = [newPatients[index + 1], newPatients[index]];
+                }
+                setPatients(newPatients);
+            };
+
+            const checkOrder = () => {
+                let isCorrect = true;
+                for (let i = 0; i < patients.length - 1; i++) {
+                    if (patients[i].priority > patients[i + 1].priority) {
+                        isCorrect = false;
+                        break;
+                    }
+                }
+
+                if (isCorrect) {
+                    alert(">> SYSTEM: 檢傷分類正確！");
+                    onNext();
+                } else {
+                    alert(">> SYSTEM ERROR: 排序有誤！請依照嚴重程度：紅(最優先) -> 黃 -> 綠 -> 黑");
+                }
+            };
+
+            return (
+                <MissionCard title="檢傷分類任務 (START)" icon={Activity}>
+                    <p className="text-sm text-cyan-300 mb-4 p-3 bg-cyan-900/20 border border-cyan-500/30 rounded">
+                        <span className="font-bold">[指令]</span> 使用右側箭頭，將傷患依照 <strong>紅(最嚴重) → 黃 → 綠 → 黑</strong> 的順序，<strong>由上而下</strong> 排列。
+                    </p>
+                    
+                    <div className="space-y-3 mb-6">
+                        {patients.map((p, index) => (
+                            <div key={p.id} className="flex items-center gap-2 bg-gray-800/50 border border-gray-600 p-3 rounded hover:border-yellow-500 transition-colors">
+                                <div className="flex-1 text-gray-200 text-sm md:text-base leading-snug font-mono">
+                                    <span className="text-yellow-500 font-bold mr-2">ID_{index + 1}</span>
+                                    {p.text}
+                                </div>
+                                <div className="flex flex-col gap-1">
+                                    <button onClick={() => moveItem(index, 'up')} disabled={index === 0} className={`p-1.5 rounded ${index === 0 ? 'text-gray-600' : 'bg-gray-700 text-cyan-400 hover:bg-cyan-900'}`}>
+                                        <ArrowUp size={18} />
+                                    </button>
+                                    <button onClick={() => moveItem(index, 'down')} disabled={index === patients.length - 1} className={`p-1.5 rounded ${index === patients.length - 1 ? 'text-gray-600' : 'bg-gray-700 text-cyan-400 hover:bg-cyan-900'}`}>
+                                        <ArrowDown size={18} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                    <ActionButton onClick={checkOrder} variant="success">提交檢傷分類報告</ActionButton>
+                </MissionCard>
+            );
+        };
+
+        // --- Main Application ---
+
+        const ZeroDayAttack = () => {
+            const [stage, setStage] = useState(0);
+            const [startTime, setStartTime] = useState(null);
+            const [elapsedTime, setElapsedTime] = useState(0);
+            const [isFinished, setIsFinished] = useState(false);
+            const mainAudioRef = useRef(null);
+            const alarmAudioRef = useRef(null);
+
+            // Timer Logic
+            useEffect(() => {
+                let interval;
+                if (startTime && !isFinished) {
+                    interval = setInterval(() => setElapsedTime(Date.now() - startTime), 1000);
+                }
+                return () => clearInterval(interval);
+            }, [startTime, isFinished]);
+
+            // Audio Logic
+            useEffect(() => {
+                if (stage >= 1 && stage <= 3) mainAudioRef.current?.play().catch(e => {});
+                else mainAudioRef.current?.pause();
+            }, [stage]);
+
+            useEffect(() => {
+                if (stage === 5) alarmAudioRef.current?.play().catch(e => {});
+                else {
+                    alarmAudioRef.current?.pause();
+                    if (alarmAudioRef.current) alarmAudioRef.current.currentTime = 0;
+                }
+            }, [stage]);
+
+            const formatTime = (ms) => {
+                const totalSeconds = Math.floor(ms / 1000);
+                const m = Math.floor(totalSeconds / 60);
+                const s = totalSeconds % 60;
+                return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            };
+
+            const nextStage = () => { setStage(prev => prev + 1); window.scrollTo(0, 0); };
+            const prevStage = () => { if (stage > 0) { setStage(prev => prev - 1); window.scrollTo(0, 0); } };
+            const startGame = () => { setStartTime(Date.now()); nextStage(); };
+
+            // Background Selection
+            const getCurrentBackground = () => {
+                if (stage === 0) return CONFIG.bgIntro;
+                if (stage === 1) return CONFIG.bgSchool;
+                if (stage >= 2 && stage <= 4) return CONFIG.bgShelter;
+                if (stage >= 5 && stage <= 6) return CONFIG.bgStairs;
+                if (stage === 7) return CONFIG.bgMedical;
+                if (stage >= 8 && stage <= 11) return CONFIG.bgSchool;
+                if (stage === 12) return CONFIG.bgCPR;
+                return CONFIG.bgIntro;
+            };
+
+            const isAlertState = stage >= 1 && stage <= 3;
+
+            // --- Stage Renderers ---
+
+            const renderIntro = () => (
+                <div className="flex flex-col items-center justify-center min-h-[80vh] px-4 text-center">
+                    <div className="bg-black/70 backdrop-blur-sm p-8 rounded-2xl border-2 border-red-600 shadow-[0_0_30px_rgba(220,38,38,0.4)] max-w-xl w-full animate-fade-in">
+                        <Siren className="w-20 h-20 text-red-500 mx-auto mb-4 animate-pulse" />
+                        <h1 className="text-5xl md:text-6xl font-black text-red-500 mb-2 tracking-tighter font-mono uppercase glitch-effect">零日攻擊</h1>
+                        <h2 className="text-2xl text-white font-bold mb-6 tracking-widest">ZERO DAY ATTACK</h2>
+                        
+                        <div className="text-left space-y-4 mb-8 text-gray-300 font-mono text-sm md:text-base border-l-2 border-red-500 pl-4">
+                            <p><span className="text-red-400 font-bold">{">>"} 狀況：</span> 花蓮港遭受敵軍空襲，導彈波及美崙區與花蓮高中。</p>
+                            <p><span className="text-yellow-400 font-bold">{">>"} 任務：</span> 20分鐘內完成檢傷分類 (START) 與急救處置。</p>
+                        </div>
+                        <ActionButton onClick={startGame} className="animate-bounce-slow">
+                            <Play className="w-5 h-5" /> 任務開始 (START MISSION)
+                        </ActionButton>
+                    </div>
+                </div>
+            );
+
+            const renderLocation = () => (
+                <MissionCard title="空襲警報發布" icon={Siren} className="border-red-500/50">
+                    <div className="bg-red-900/30 p-4 rounded border border-red-500/30 mb-4 flex items-center gap-3">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-ping"></div>
+                        <span className="text-red-300 font-mono font-bold">WARNING: AIR RAID SIREN DETECTED</span>
+                    </div>
+                    
+                    <p className="text-lg text-gray-200 mb-4">
+                        你正在吃早餐，警報聲突然大作。<br/>
+                        <span className="text-yellow-400 font-bold">{">>"} 當前位置：</span> 民立里花蓮高中附近早餐店
+                    </p>
+
+                    <div className="relative w-full aspect-video rounded border-2 border-cyan-500/30 overflow-hidden mb-6 group">
+                        <div className="absolute top-2 left-2 bg-black/60 text-cyan-400 text-xs px-2 py-1 font-mono z-10">LIVE FEED</div>
+                        <iframe 
+                            src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d313.5611066970752!2d121.62292258755103!3d23.98788648558215!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x34689f925eb6b6db%3A0x2d8453971242c745!2z6JeN55uk5a2Q5pep5Y2I6aSQIOS4ree-juW6lw!5e0!3m2!1szh-TW!2stw!4v1763690942767!5m2!1szh-TW!2stw" 
+                            className="w-full h-full opacity-80 hover:opacity-100 transition-opacity invert-[.85] hue-rotate-180"
+                            style={{border:0}} allowFullScreen="" loading="lazy" title="Map"
+                        ></iframe>
+                        {/* Crosshair */}
+                        <div className="absolute inset-0 pointer-events-none border border-cyan-500/20">
+                            <div className="absolute top-1/2 left-1/2 w-8 h-8 border-2 border-red-500/50 -translate-x-1/2 -translate-y-1/2 rounded-full"></div>
+                            <div className="absolute top-1/2 left-0 right-0 h-px bg-cyan-500/20"></div>
+                            <div className="absolute top-0 bottom-0 left-1/2 w-px bg-cyan-500/20"></div>
+                        </div>
+                    </div>
+                    <ActionButton onClick={nextStage}>確認位置並尋找掩護</ActionButton>
+                </MissionCard>
+            );
+
+            const renderShelterPuzzle = () => (
+                <MissionCard title="尋找最近空襲避難場所" icon={MapPin}>
+                    <p className="text-gray-300 mb-4">
+                        開啟 <a href={CONFIG.shelterMapLink} target="_blank" rel="noreferrer" className="text-cyan-400 underline decoration-dotted underline-offset-4 hover:text-cyan-300">花蓮市民防災各里避難地圖</a>，掃描並鎖定最近的避難所。
+                    </p>
+                    <div className="bg-gray-800/50 p-3 rounded border-l-2 border-yellow-500 mb-6">
+                        <span className="text-yellow-500 font-bold font-mono text-xs">MISSION HINT:</span>
+                        <p className="text-sm text-gray-400 mt-1">輸入目標場域電話代表號 (9碼) 解鎖導航。</p>
+                    </div>
+                    <GameInput onSubmit={nextStage} correctCode="038242236" placeholder="輸入電話號碼" hint="座標定位失敗，請確認防災地圖。" />
+                </MissionCard>
+            );
+
+            const renderBasementQuestion = () => {
+                const checkAnswer = (ans) => {
+                    if (ans === 'D') nextStage();
+                    else alert(">> 警告：該建築結構不安全，無法抵禦空襲。");
+                };
+                return (
+                    <MissionCard title="結構安全評估" icon={Shield}>
+                        <div className="mb-4 overflow-hidden rounded border border-gray-600">
+                        <img src={CONFIG.imgSchoolMap} alt="校園地圖" className="w-full opacity-90" />
+                        </div>
+                        <p className="font-bold text-lg text-white mb-4">掃描校園地圖：請識別具備地下室或堅固結構的避難優先建築。</p>
+                        <div className="grid grid-cols-1 gap-3">
+                            {['A. 中孝樓', 'B. 圖資大樓', 'C. 體育館', 'D. 綜合大樓'].map((opt) => (
+                                <ActionButton key={opt} variant="secondary" onClick={() => checkAnswer(opt[0])} className="justify-start font-mono">
+                                {opt}
+                                </ActionButton>
+                            ))}
+                        </div>
+                    </MissionCard>
+                );
+            };
+
+            const renderShelterPhoto = () => (
+                <MissionCard title="避難所回報" icon={CornerUpRight}>
+                    <div className="flex flex-col items-center py-4">
+                        <div className="w-24 h-24 border-2 border-dashed border-green-500 rounded-full flex items-center justify-center mb-4 bg-green-900/20">
+                            <FileText className="w-10 h-10 text-green-400" />
+                        </div>
+                        <p className="text-center text-gray-300 mb-6">
+                            抵達安全區。開啟平板相機，拍攝<span className="text-green-400">防空避難指引圖示</span>並上傳至指揮中心。
+                        </p>
+                        <a href={CONFIG.padletShelterPhoto} target="_blank" rel="noreferrer" className="w-full">
+                            <ActionButton variant="outline" className="mb-4">{">>"} 啟動上傳連結 (Padlet)</ActionButton>
+                        </a>
+                        <ActionButton onClick={nextStage} variant="success">確認上傳完成</ActionButton>
+                    </div>
+                </MissionCard>
+            );
+
+            const renderAlarmQuiz = () => {
+                const check = (isCorrect) => isCorrect ? nextStage() : alert(">> 解析錯誤：此聲音並非該指令。");
+                return (
+                    <MissionCard title="聲紋辨識程序" icon={Radio}>
+                        <div className="flex justify-center py-8">
+                            <div className="relative">
+                                <Volume2 size={64} className="text-blue-400 relative z-10" />
+                                <div className="absolute inset-0 bg-blue-500 blur-xl opacity-40 animate-pulse"></div>
+                            </div>
+                        </div>
+                        <p className="text-center text-lg mb-6 font-mono">正在接收廣播訊號...<br/>請解析該音頻訊號含義。</p>
+                        <div className="grid gap-4">
+                            <ActionButton variant="secondary" onClick={() => check(true)}>解除空襲警報 (ALL CLEAR)</ActionButton>
+                            <ActionButton variant="secondary" onClick={() => check(false)}>持續避難姿勢 (TAKE COVER)</ActionButton>
+                        </div>
+                    </MissionCard>
+                );
+            };
+
+            const renderMoveToFloor2 = () => (
+                <MissionCard title="移動路徑規劃" icon={ArrowUp}>
+                    <img src={CONFIG.imgMoveMap} alt="移動地圖" className="w-full rounded border border-gray-600 mb-4 invert-[.9]" />
+                    <p className="text-lg mb-6">
+                        <span className="text-red-400 font-bold">{">>"} 新指令：</span> 地面層狀況不明。小隊移動至 <span className="text-yellow-400 text-xl font-bold">2F</span> 搜索生還者與物資。
+                    </p>
+                    <ActionButton onClick={nextStage}>執行移動</ActionButton>
+                </MissionCard>
+            );
+
+            const renderSupplies = () => (
+                <MissionCard title="物資補給鎖定" icon={Shield}>
+                    <div className="relative mb-4">
+                        <img src={CONFIG.imgSupplies} alt="急救物資" className="w-full rounded border border-gray-600" />
+                        <div className="absolute bottom-0 left-0 bg-black/80 text-green-400 px-3 py-1 text-xs font-mono">SUPPLY_CACHE_FOUND</div>
+                    </div>
+                    <p className="mb-4 text-gray-300">在二樓走廊發現急救物資箱，需要存取代碼以解鎖。</p>
+                    <GameInput onSubmit={nextStage} correctCode="8324123" altCodes={["832428", "832444"]} placeholder="輸入物資箱代碼" />
+                </MissionCard>
+            );
+
+            const renderDrill = (title, loc, condition, task, code, padletUrl, colorClass = "text-red-400", borderClass = "border-red-500") => (
+                <MissionCard title={title} icon={Stethoscope} className={`border-t-4 ${borderClass}`}>
+                    <div className={`bg-gray-900/80 p-4 rounded border-l-4 ${borderClass} mb-4`}>
+                        <div className="flex justify-between items-start">
+                        <div>
+                            <p className="text-xs text-gray-500 font-mono uppercase mb-1">LOCATION</p>
+                            <h3 className={`text-lg font-bold ${colorClass} mb-2`}>{loc}</h3>
+                        </div>
+                        <Activity className={colorClass} size={24} />
+                        </div>
+                        <p className="text-xs text-gray-500 font-mono uppercase mb-1">STATUS</p>
+                        <p className="text-gray-200">{condition}</p>
+                    </div>
+                    
+                    <div className="bg-black/40 p-4 rounded mb-6">
+                        <h4 className="text-cyan-400 font-bold mb-2 font-mono flex items-center gap-2"><FileText size={16}/> 任務列表</h4>
+                        <ul className="space-y-2 text-sm text-gray-300 font-mono">
+                        {task.map((t, i) => <li key={i} className="flex gap-2"><span>[{i+1}]</span> {t}</li>)}
+                        </ul>
+                    </div>
+
+                    <a href={padletUrl} target="_blank" rel="noreferrer" className="block w-full mb-4">
+                        <ActionButton variant="outline">{">>"} 上傳紀錄 (Padlet)</ActionButton>
+                    </a>
+                    <GameInput onSubmit={nextStage} correctCode={code} placeholder="輸入傷患通關密碼" />
+                </MissionCard>
+            );
+
+            const renderTaskCPR = () => (
+                <MissionCard title="代碼 999: 心肺復甦" icon={HeartPulse} className="border-t-4 border-red-600">
+                    <div className="bg-red-600/20 border border-red-500 p-4 rounded mb-6 animate-pulse">
+                        <h3 className="text-2xl font-black text-red-500 flex items-center gap-2 justify-center uppercase">
+                            <Activity size={28}/> Critical Failure
+                        </h3>
+                        <p className="text-center text-red-200 mt-1 font-mono">VITAL SIGNS LOST</p>
+                    </div>
+                    <div className="space-y-4 text-gray-300 mb-6">
+                        <p><strong>位置：</strong> 校長室旁會議室</p>
+                        <p><strong>狀況：</strong> 傷患疑似血胸，突發心跳停止。</p>
+                        <ul className="list-disc list-inside bg-gray-800 p-4 rounded text-sm font-mono">
+                            <li>主手：實施 CPR (30:2)</li>
+                            <li>副手：取得 AED 並執行一次指令</li>
+                            <li>使用電擊器後執行2循環30:2</li>                        
+                            <li>紀錄：拍照壓胸與吹氣紀錄並上傳</li>
+                        </ul>
+                    </div>
+                    <a href={CONFIG.padletCPR} target="_blank" rel="noreferrer" className="block w-full mb-4">
+                        <ActionButton variant="outline">上傳急救紀錄</ActionButton>
+                    </a>
+                    <div className="border-t border-gray-700 pt-4 mt-4">
+                        <p className="text-sm text-center text-gray-500 mb-2">AED DEVICE BACKDOOR CODE</p>
+                        <GameInput onSubmit={() => { setIsFinished(true); nextStage(); }} correctCode="119911" placeholder="輸入 安妮 背面密碼" />
+                    </div>
+                </MissionCard>
+            );
+
+            const renderFinish = () => (
+                <div className="text-center py-12 animate-fade-in">
+                    <div className="relative inline-block">
+                        <Award className="w-32 h-32 text-yellow-400 mx-auto mb-6 drop-shadow-[0_0_15px_rgba(250,204,21,0.5)]" />
+                        <div className="absolute inset-0 bg-yellow-400 blur-2xl opacity-20 animate-pulse"></div>
+                    </div>
+                    <h1 className="text-4xl md:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-yellow-300 to-yellow-600 tracking-wider mb-2 uppercase">Mission Accomplished</h1>
+                    <p className="text-xl text-gray-400 font-mono mb-8">任務代號：零日攻擊 - 演練完成</p>
+                    
+                    <div className="bg-black/60 border border-gray-700 p-8 rounded-2xl max-w-md mx-auto mb-8 backdrop-blur-md relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-green-500 to-transparent"></div>
+                        <p className="text-gray-500 font-mono uppercase text-sm mb-2">Total Operation Time</p>
+                        <p className="text-6xl font-mono font-bold text-white tabular-nums tracking-widest text-shadow">{formatTime(elapsedTime)}</p>
+                    </div>
+
+                    <div className="text-left bg-gray-900/80 p-6 rounded-xl space-y-3 border border-gray-800 max-w-md mx-auto">
+                        <h4 className="text-green-500 font-bold uppercase font-mono flex items-center gap-2"><CheckCircle size={16}/> 撤收程序</h4>
+                        <ul className="space-y-2 text-gray-400 text-sm font-mono">
+                        <li>[ ] 歸還急救包、AED、安妮模型</li>
+                        <li>[ ] 向教官/老師回報任務結束</li>
+                        <li>[ ] 填寫後測表單並領取結業證書</li>
+                        <li>[ ] 保留此頁面給老師檢查，可先截圖留存</li>
+                        </ul>
+                    </div>
+                    
+                    <button onClick={() => window.location.reload()} className="mt-12 text-gray-600 hover:text-white underline font-mono text-sm uppercase transition-colors">
+                        Restart Simulation
+                    </button>
+                </div>
+            );
+            
+            const CheckCircle = ({size}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>;
+
+            return (
+                <TacticalWrapper bgImage={getCurrentBackground()} isAlert={isAlertState}>
+                    {/* Audio Elements */}
+                    <audio ref={mainAudioRef} src={CONFIG.audioSrc} loop></audio>
+                    <audio ref={alarmAudioRef} src={CONFIG.alarmClearSrc}></audio>
+
+                    {/* HUD Header */}
+                    <div className="sticky top-0 z-50 bg-gray-950/90 backdrop-blur-md border-b border-gray-800 p-3 flex justify-between items-center shadow-lg">
+                        <div className="flex items-center gap-3">
+                        {stage > 0 && (
+                            <button onClick={prevStage} className="p-2 rounded hover:bg-gray-800 text-cyan-500 transition-colors" aria-label="Back">
+                            <ArrowLeft size={20} />
+                            </button>
+                        )}
+                        <div className="flex items-center gap-2">
+                            <Shield className={`w-5 h-5 ${isAlertState ? 'text-red-500 animate-pulse' : 'text-cyan-500'}`}/>
+                            <span className="font-mono font-bold text-gray-200 hidden sm:block tracking-wider">ZERO DAY SIM</span>
+                        </div>
+                        </div>
+                        
+                        {/* Stage Indicator */}
+                        <div className="flex gap-1 hidden md:flex">
+                        {Array.from({length: 13}).map((_, i) => (
+                            <div key={i} className={`h-1 w-4 rounded-full ${i < stage ? 'bg-cyan-500' : i === stage ? 'bg-yellow-500 animate-pulse' : 'bg-gray-700'}`}></div>
+                        ))}
+                        </div>
+
+                        <div className="font-mono text-xl font-bold text-yellow-500 bg-black/60 px-4 py-1 rounded border border-yellow-900/50 shadow-[0_0_10px_rgba(234,179,8,0.2)] tabular-nums">
+                        {formatTime(elapsedTime)}
+                        </div>
+                    </div>
+
+                    {/* Main Content Area */}
+                    <main className="flex-1 px-4 py-6 flex flex-col justify-center">
+                        {stage === 0 && renderIntro()}
+                        {stage === 1 && renderLocation()}
+                        {stage === 2 && renderShelterPuzzle()}
+                        {stage === 3 && renderBasementQuestion()}
+                        {stage === 4 && renderShelterPhoto()}
+                        {stage === 5 && renderAlarmQuiz()}
+                        {stage === 6 && renderMoveToFloor2()}
+                        {stage === 7 && renderSupplies()}
+                        {stage === 8 && <TriageGame onNext={nextStage} />}
+                        {stage === 9 && renderDrill("技術考核: 頭部創傷", "人事室門口", "頭部創傷，左小腿骨折", ["左小腿骨折固定", "頭部加壓止血", "包紮後拍照上傳"], "482434", CONFIG.padletPatient1)}
+                        {stage === 10 && renderDrill("技術考核: 動脈出血", "2樓廁所前", "前臂深裂傷，持續性出血", ["立即止血處置", "點擊 Padlet 評論上傳"], "222468", CONFIG.padletPatient2, "text-yellow-400", "border-yellow-500")}
+                        {stage === 11 && renderDrill("技術考核: 嚴重撕裂", "教室走廊", "右肩頰嚴重撕裂傷，大出血", ["加壓止血", "傷口包紮", "拍照上傳"], "6458420", CONFIG.padletPatient3, "text-green-400", "border-green-500")}
+                        {stage === 12 && renderTaskCPR()}
+                        {stage === 13 && renderFinish()}
+                    </main>
+                </TacticalWrapper>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<ZeroDayAttack />);
+    </script>
+</body>
+</html>
